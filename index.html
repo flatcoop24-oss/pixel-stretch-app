@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#0b0b0c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Pixel Stretch" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon.svg" />
+  <link rel="stylesheet" href="style.css" />
+  <title>Pixel Stretch</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LOCAL IMAGE TOOL</p>
+        <h1>Pixel Stretch</h1>
+      </div>
+      <button id="helpBtn" class="icon-btn" aria-label="도움말">?</button>
+    </header>
+
+    <section class="workspace-card">
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">↔</div>
+        <h2>사진을 불러오세요</h2>
+        <p>모든 처리는 기기 안에서만 진행됩니다.</p>
+        <label class="primary-btn file-btn">
+          사진 선택
+          <input id="fileInput" type="file" accept="image/*" hidden />
+        </label>
+      </div>
+
+      <div id="canvasWrap" class="canvas-wrap hidden">
+        <canvas id="canvas"></canvas>
+        <div id="cursorGuide" class="cursor-guide hidden"></div>
+      </div>
+    </section>
+
+    <section id="controls" class="controls hidden">
+      <div class="segmented" role="tablist" aria-label="도구 선택">
+        <button class="seg-btn active" data-tool="line">직선 스트레치</button>
+        <button class="seg-btn" data-tool="brush">브러시</button>
+      </div>
+
+      <div class="control-row">
+        <span class="control-label">방향</span>
+        <div class="mini-segmented">
+          <button class="mini-btn active" data-direction="horizontal">가로</button>
+          <button class="mini-btn" data-direction="vertical">세로</button>
+        </div>
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-head"><span>길이</span><output id="lengthValue">160</output></div>
+        <input id="lengthRange" type="range" min="20" max="900" value="160" step="10" />
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-head"><span>두께</span><output id="thicknessValue">24</output></div>
+        <input id="thicknessRange" type="range" min="2" max="220" value="24" step="2" />
+      </div>
+
+      <div class="slider-group">
+        <div class="slider-head"><span>강도</span><output id="opacityValue">100%</output></div>
+        <input id="opacityRange" type="range" min="10" max="100" value="100" step="5" />
+      </div>
+
+      <div class="action-grid">
+        <button id="undoBtn" class="secondary-btn" disabled>실행 취소</button>
+        <button id="resetBtn" class="secondary-btn">원본 복원</button>
+        <label class="secondary-btn file-btn compact">다른 사진<input id="replaceInput" type="file" accept="image/*" hidden /></label>
+        <button id="saveBtn" class="primary-btn">저장 / 공유</button>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="helpDialog">
+    <div class="dialog-card">
+      <div class="dialog-head"><h2>사용 방법</h2><button id="closeHelp" class="icon-btn">×</button></div>
+      <ol>
+        <li>사진을 불러옵니다.</li>
+        <li>직선형은 캔버스를 탭하거나 드래그합니다.</li>
+        <li>브러시형은 원하는 부위를 문지릅니다.</li>
+        <li>가로·세로 방향과 길이, 두께를 조절합니다.</li>
+        <li>저장 / 공유로 사진 앱에 보냅니다.</li>
+      </ol>
+      <p>아이폰에서는 공유 시트에서 ‘이미지 저장’을 선택하세요.</p>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

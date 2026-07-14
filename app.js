@@ -1,140 +1,38 @@
-const els = {
-  fileInput: document.getElementById('fileInput'), replaceInput: document.getElementById('replaceInput'),
-  emptyState: document.getElementById('emptyState'), canvasWrap: document.getElementById('canvasWrap'),
-  canvas: document.getElementById('canvas'), controls: document.getElementById('controls'),
-  cursorGuide: document.getElementById('cursorGuide'), undoBtn: document.getElementById('undoBtn'),
-  resetBtn: document.getElementById('resetBtn'), saveBtn: document.getElementById('saveBtn'),
-  lengthRange: document.getElementById('lengthRange'), thicknessRange: document.getElementById('thicknessRange'), opacityRange: document.getElementById('opacityRange'),
-  lengthValue: document.getElementById('lengthValue'), thicknessValue: document.getElementById('thicknessValue'), opacityValue: document.getElementById('opacityValue'),
-  helpBtn: document.getElementById('helpBtn'), helpDialog: document.getElementById('helpDialog'), closeHelp: document.getElementById('closeHelp')
-};
-
-const ctx = els.canvas.getContext('2d', { willReadFrequently: true });
-let originalImage = null;
-let history = [];
-let tool = 'line';
-let direction = 'horizontal';
-let drawing = false;
-let lastBrushPoint = null;
-
-function fitCanvasToImage(img){
-  const maxDim = 2200;
-  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
-  els.canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
-  els.canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
-}
-
-function loadFile(file){
-  if(!file || !file.type.startsWith('image/')) return;
-  const url = URL.createObjectURL(file);
-  const img = new Image();
-  img.onload = () => {
-    fitCanvasToImage(img);
-    ctx.clearRect(0,0,els.canvas.width,els.canvas.height);
-    ctx.drawImage(img,0,0,els.canvas.width,els.canvas.height);
-    originalImage = ctx.getImageData(0,0,els.canvas.width,els.canvas.height);
-    history = [];
-    updateUndo();
-    els.emptyState.classList.add('hidden');
-    els.canvasWrap.classList.remove('hidden');
-    els.controls.classList.remove('hidden');
-    URL.revokeObjectURL(url);
-  };
-  img.src = url;
-}
-
-function snapshot(){
-  history.push(ctx.getImageData(0,0,els.canvas.width,els.canvas.height));
-  if(history.length > 20) history.shift();
-  updateUndo();
-}
-function updateUndo(){ els.undoBtn.disabled = history.length === 0; }
-function undo(){ const state = history.pop(); if(state){ ctx.putImageData(state,0,0); updateUndo(); } }
-function reset(){ if(!originalImage) return; snapshot(); ctx.putImageData(originalImage,0,0); }
-
-function canvasPoint(evt){
-  const rect = els.canvas.getBoundingClientRect();
-  return {
-    x: Math.max(0, Math.min(els.canvas.width-1, (evt.clientX-rect.left) * els.canvas.width/rect.width)),
-    y: Math.max(0, Math.min(els.canvas.height-1, (evt.clientY-rect.top) * els.canvas.height/rect.height))
-  };
-}
-
-function stretchAt(x,y,saveState=true){
-  if(saveState) snapshot();
-  const len = Number(els.lengthRange.value);
-  const thick = Number(els.thicknessRange.value);
-  const alpha = Number(els.opacityRange.value)/100;
-  const w = els.canvas.width, h = els.canvas.height;
-  ctx.save(); ctx.globalAlpha = alpha; ctx.imageSmoothingEnabled = false;
-  if(direction === 'horizontal'){
-    const sy = Math.max(0, Math.round(y-thick/2));
-    const sh = Math.min(thick, h-sy);
-    const sx = Math.max(0, Math.round(x));
-    const sample = ctx.getImageData(sx, sy, 1, sh);
-    const off = document.createElement('canvas'); off.width=1; off.height=sh; off.getContext('2d').putImageData(sample,0,0);
-    const drawX = Math.max(0, Math.min(w-len, sx-len/2));
-    ctx.drawImage(off,0,0,1,sh,drawX,sy,Math.min(len,w-drawX),sh);
-  }else{
-    const sx = Math.max(0, Math.round(x-thick/2));
-    const sw = Math.min(thick, w-sx);
-    const sy = Math.max(0, Math.round(y));
-    const sample = ctx.getImageData(sx, sy, sw, 1);
-    const off = document.createElement('canvas'); off.width=sw; off.height=1; off.getContext('2d').putImageData(sample,0,0);
-    const drawY = Math.max(0, Math.min(h-len, sy-len/2));
-    ctx.drawImage(off,0,0,sw,1,sx,drawY,sw,Math.min(len,h-drawY));
-  }
-  ctx.restore();
-}
-
-function brushStroke(a,b){
-  const dist = Math.hypot(b.x-a.x,b.y-a.y);
-  const step = Math.max(3, Number(els.thicknessRange.value)*0.35);
-  const count = Math.max(1, Math.ceil(dist/step));
-  for(let i=0;i<=count;i++){
-    const t=i/count;
-    stretchAt(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t,false);
-  }
-}
-
-function pointerDown(evt){
-  if(!originalImage) return; evt.preventDefault();
-  drawing = true; const p=canvasPoint(evt);
-  if(tool==='line'){ stretchAt(p.x,p.y,true); drawing=false; }
-  else { snapshot(); lastBrushPoint=p; stretchAt(p.x,p.y,false); }
-}
-function pointerMove(evt){
-  if(!drawing || tool!=='brush') return; evt.preventDefault();
-  const p=canvasPoint(evt); brushStroke(lastBrushPoint,p); lastBrushPoint=p;
-}
-function pointerUp(){ drawing=false; lastBrushPoint=null; }
-
-async function saveImage(){
-  const blob = await new Promise(res => els.canvas.toBlob(res,'image/png',1));
-  if(!blob) return;
-  const file = new File([blob], `pixel-stretch-${Date.now()}.png`, {type:'image/png'});
-  try{
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:'Pixel Stretch'});
-      return;
-    }
-  }catch(e){ if(e.name==='AbortError') return; }
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=file.name; a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-}
-
-[els.fileInput,els.replaceInput].forEach(input=>input.addEventListener('change',e=>loadFile(e.target.files[0])));
-els.canvas.addEventListener('pointerdown',pointerDown);
-els.canvas.addEventListener('pointermove',pointerMove);
-window.addEventListener('pointerup',pointerUp);
-window.addEventListener('pointercancel',pointerUp);
-els.undoBtn.addEventListener('click',undo); els.resetBtn.addEventListener('click',reset); els.saveBtn.addEventListener('click',saveImage);
-
-document.querySelectorAll('[data-tool]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-tool]').forEach(b=>b.classList.remove('active'));btn.classList.add('active');tool=btn.dataset.tool;}));
-document.querySelectorAll('[data-direction]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('[data-direction]').forEach(b=>b.classList.remove('active'));btn.classList.add('active');direction=btn.dataset.direction;}));
-
-function bindRange(range,out,format=v=>v){ const update=()=>out.value=format(range.value); range.addEventListener('input',update); update(); }
-bindRange(els.lengthRange,els.lengthValue); bindRange(els.thicknessRange,els.thicknessValue); bindRange(els.opacityRange,els.opacityValue,v=>`${v}%`);
-els.helpBtn.addEventListener('click',()=>els.helpDialog.showModal()); els.closeHelp.addEventListener('click',()=>els.helpDialog.close());
-
-if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const el={canvas:$('#canvas'),stage:$('#stage'),viewport:$('#viewport'),empty:$('#emptyState'),panel:$('#panel'),first:$('#firstInput'),file:$('#fileInput'),cursor:$('#brushCursor'),zoom:$('#zoomText'),fit:$('#fitBtn'),angle:$('#angle'),length:$('#length'),size:$('#size'),opacity:$('#opacity'),spacing:$('#spacing'),angleOut:$('#angleOut'),lengthOut:$('#lengthOut'),sizeOut:$('#sizeOut'),opacityOut:$('#opacityOut'),spacingOut:$('#spacingOut'),undo:$('#undoBtn'),redo:$('#redoBtn'),reset:$('#resetBtn'),save:$('#saveBtn'),toast:$('#toast'),help:$('#helpDialog'),helpBtn:$('#helpBtn'),closeHelp:$('#closeHelp')};
+const ctx=el.canvas.getContext('2d',{willReadFrequently:true});
+const state={tool:'line',scale:1,tx:0,ty:0,pointers:new Map(),gesture:null,drawing:false,last:null,original:null,undo:[],redo:[],fileName:'image'};
+const MAX_DIM=4096,MAX_HISTORY=12;
+function say(t){el.toast.textContent=t;el.toast.classList.add('show');clearTimeout(say.t);say.t=setTimeout(()=>el.toast.classList.remove('show'),1800)}
+function syncRanges(){el.angleOut.value=`${el.angle.value}°`;el.lengthOut.value=el.length.value;el.sizeOut.value=el.size.value;el.opacityOut.value=`${el.opacity.value}%`;el.spacingOut.value=`${el.spacing.value}%`;$$('.presets button').forEach(b=>b.classList.toggle('active',Number(b.dataset.angle)===Number(el.angle.value)));updateCursorSize()}
+[el.angle,el.length,el.size,el.opacity,el.spacing].forEach(x=>x.addEventListener('input',syncRanges));syncRanges();
+async function loadFile(file){if(!file||!file.type.startsWith('image/'))return;const bmp=await createImageBitmap(file);const scale=Math.min(1,MAX_DIM/Math.max(bmp.width,bmp.height));el.canvas.width=Math.max(1,Math.round(bmp.width*scale));el.canvas.height=Math.max(1,Math.round(bmp.height*scale));ctx.clearRect(0,0,el.canvas.width,el.canvas.height);ctx.drawImage(bmp,0,0,el.canvas.width,el.canvas.height);bmp.close();state.original=ctx.getImageData(0,0,el.canvas.width,el.canvas.height);state.undo=[];state.redo=[];state.fileName=(file.name||'image').replace(/\.[^.]+$/,'');el.empty.classList.add('hidden');el.viewport.classList.remove('hidden');el.panel.classList.remove('hidden');updateHistory();requestAnimationFrame(fitView);scheduleAutosave();say(`${el.canvas.width} × ${el.canvas.height} 불러옴`)}
+[el.first,el.file].forEach(i=>i.addEventListener('change',e=>loadFile(e.target.files[0])));
+function fitView(){const r=el.viewport.getBoundingClientRect(),pad=20;state.scale=Math.min((r.width-pad*2)/el.canvas.width,(r.height-pad*2)/el.canvas.height);state.scale=Math.max(.05,Math.min(8,state.scale));state.tx=(r.width-el.canvas.width*state.scale)/2;state.ty=(r.height-el.canvas.height*state.scale)/2;applyTransform()}
+function applyTransform(){el.stage.style.transform=`translate(${state.tx}px,${state.ty}px) scale(${state.scale})`;el.zoom.textContent=`${Math.round(state.scale*100)}%`;updateCursorSize()}
+function updateCursorSize(){const px=Number(el.size.value)*state.scale;el.cursor.style.width=`${px}px`;el.cursor.style.height=`${px}px`}
+el.fit.addEventListener('click',fitView);window.addEventListener('resize',()=>state.original&&fitView());
+function canvasPoint(clientX,clientY){const r=el.viewport.getBoundingClientRect();return{x:(clientX-r.left-state.tx)/state.scale,y:(clientY-r.top-state.ty)/state.scale}}
+function inside(p){return p.x>=0&&p.y>=0&&p.x<el.canvas.width&&p.y<el.canvas.height}
+function snapshot(){state.undo.push(ctx.getImageData(0,0,el.canvas.width,el.canvas.height));if(state.undo.length>MAX_HISTORY)state.undo.shift();state.redo=[];updateHistory()}
+function updateHistory(){el.undo.disabled=!state.undo.length;el.redo.disabled=!state.redo.length}
+function undo(){if(!state.undo.length)return;state.redo.push(ctx.getImageData(0,0,el.canvas.width,el.canvas.height));ctx.putImageData(state.undo.pop(),0,0);updateHistory();scheduleAutosave()}
+function redo(){if(!state.redo.length)return;state.undo.push(ctx.getImageData(0,0,el.canvas.width,el.canvas.height));ctx.putImageData(state.redo.pop(),0,0);updateHistory();scheduleAutosave()}
+el.undo.onclick=undo;el.redo.onclick=redo;el.reset.onclick=()=>{if(!state.original)return;snapshot();ctx.putImageData(state.original,0,0);scheduleAutosave();say('원본으로 복원했습니다')};
+function stamp(x,y){const angle=Number(el.angle.value)*Math.PI/180,len=Number(el.length.value),thick=Number(el.size.value),alpha=Number(el.opacity.value)/100;const source=document.createElement('canvas');source.width=el.canvas.width;source.height=el.canvas.height;source.getContext('2d').drawImage(el.canvas,0,0);const strip=document.createElement('canvas');strip.width=2;strip.height=Math.max(1,Math.round(thick));const sc=strip.getContext('2d');sc.imageSmoothingEnabled=false;sc.save();sc.translate(1,thick/2);sc.rotate(-angle);sc.drawImage(source,-x,-y);sc.restore();ctx.save();ctx.globalAlpha=alpha;ctx.imageSmoothingEnabled=false;ctx.translate(x,y);ctx.rotate(angle);ctx.drawImage(strip,0,0,2,strip.height,-len/2,-thick/2,len,thick);ctx.restore()}
+function stroke(a,b){const d=Math.hypot(b.x-a.x,b.y-a.y),step=Math.max(2,Number(el.size.value)*Number(el.spacing.value)/100),n=Math.max(1,Math.ceil(d/step));for(let i=1;i<=n;i++){const t=i/n;stamp(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t)}}
+function beginGesture(){const pts=[...state.pointers.values()];if(pts.length<2)return;const a=pts[0],b=pts[1];state.gesture={dist:Math.hypot(b.x-a.x,b.y-a.y),scale:state.scale,tx:state.tx,ty:state.ty,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};state.drawing=false}
+function updateGesture(){const pts=[...state.pointers.values()];if(pts.length<2||!state.gesture)return;const a=pts[0],b=pts[1],cx=(a.x+b.x)/2,cy=(a.y+b.y)/2,dist=Math.hypot(b.x-a.x,b.y-a.y),ns=Math.max(.05,Math.min(8,state.gesture.scale*dist/state.gesture.dist)),vr=el.viewport.getBoundingClientRect(),gx=state.gesture.cx-vr.left,gy=state.gesture.cy-vr.top,imageX=(gx-state.gesture.tx)/state.gesture.scale,imageY=(gy-state.gesture.ty)/state.gesture.scale;state.scale=ns;state.tx=(cx-vr.left)-imageX*ns;state.ty=(cy-vr.top)-imageY*ns;applyTransform()}
+el.viewport.addEventListener('pointerdown',e=>{el.viewport.setPointerCapture(e.pointerId);state.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(state.pointers.size===2){beginGesture();return}if(state.pointers.size>1)return;const p=canvasPoint(e.clientX,e.clientY);state.last={clientX:e.clientX,clientY:e.clientY,p};if(state.tool==='hand'){state.drawing=true;return}if(!inside(p))return;snapshot();state.drawing=true;stamp(p.x,p.y);if(state.tool==='line'){state.drawing=false;scheduleAutosave()}});
+el.viewport.addEventListener('pointermove',e=>{const vr=el.viewport.getBoundingClientRect();el.cursor.style.left=`${e.clientX-vr.left}px`;el.cursor.style.top=`${e.clientY-vr.top}px`;if(state.pointers.has(e.pointerId))state.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(state.pointers.size>=2){updateGesture();return}if(!state.drawing||!state.last)return;if(state.tool==='hand'){state.tx+=e.clientX-state.last.clientX;state.ty+=e.clientY-state.last.clientY;state.last.clientX=e.clientX;state.last.clientY=e.clientY;applyTransform();return}if(state.tool==='brush'){const p=canvasPoint(e.clientX,e.clientY);if(inside(p)){stroke(state.last.p,p);state.last.p=p}}});
+function pointerEnd(e){state.pointers.delete(e.pointerId);if(state.pointers.size<2)state.gesture=null;if(state.drawing&&state.tool==='brush')scheduleAutosave();state.drawing=false;state.last=null}
+el.viewport.addEventListener('pointerup',pointerEnd);el.viewport.addEventListener('pointercancel',pointerEnd);el.viewport.addEventListener('pointerenter',()=>state.tool!=='hand'&&el.cursor.classList.remove('hidden'));el.viewport.addEventListener('pointerleave',()=>el.cursor.classList.add('hidden'));
+el.viewport.addEventListener('wheel',e=>{e.preventDefault();const r=el.viewport.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,ix=(mx-state.tx)/state.scale,iy=(my-state.ty)/state.scale;state.scale=Math.max(.05,Math.min(8,state.scale*Math.exp(-e.deltaY*.001)));state.tx=mx-ix*state.scale;state.ty=my-iy*state.scale;applyTransform()},{passive:false});
+$$('[data-tool]').forEach(b=>b.onclick=()=>{$$('[data-tool]').forEach(x=>x.classList.remove('active'));b.classList.add('active');state.tool=b.dataset.tool;el.cursor.classList.toggle('hidden',state.tool==='hand')});$$('[data-angle]').forEach(b=>b.onclick=()=>{el.angle.value=b.dataset.angle;syncRanges()});
+async function save(){const blob=await new Promise(r=>el.canvas.toBlob(r,'image/png',1));if(!blob)return;const file=new File([blob],`${state.fileName}-pixel-stretch-${Date.now()}.png`,{type:'image/png'});try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:'Pixel Stretch'});return}}catch(e){if(e.name==='AbortError')return}const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+el.save.onclick=save;el.helpBtn.onclick=()=>el.help.showModal();el.closeHelp.onclick=()=>el.help.close();
+let saveTimer;function scheduleAutosave(){clearTimeout(saveTimer);saveTimer=setTimeout(autoSave,700)}
+async function autoSave(){if(!state.original)return;try{const blob=await new Promise(r=>el.canvas.toBlob(r,'image/png'));localStorage.setItem('ps-meta',JSON.stringify({name:state.fileName,time:Date.now()}));const db=await openDB();db.transaction('files','readwrite').objectStore('files').put(blob,'latest')}catch{}}
+function openDB(){return new Promise((res,rej)=>{const q=indexedDB.open('pixel-stretch',1);q.onupgradeneeded=()=>q.result.createObjectStore('files');q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}
+async function restore(){try{const meta=JSON.parse(localStorage.getItem('ps-meta'));if(!meta)return;const db=await openDB(),q=db.transaction('files').objectStore('files').get('latest');q.onsuccess=async()=>{if(!q.result)return;const bmp=await createImageBitmap(q.result);el.canvas.width=bmp.width;el.canvas.height=bmp.height;ctx.drawImage(bmp,0,0);bmp.close();state.original=ctx.getImageData(0,0,el.canvas.width,el.canvas.height);state.fileName=meta.name||'restored';el.empty.classList.add('hidden');el.viewport.classList.remove('hidden');el.panel.classList.remove('hidden');fitView();say('이전 작업을 복원했습니다')}}catch{}}
+if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));restore();

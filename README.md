@@ -1,17 +1,18 @@
-# Pixel Stretch PWA
+# Pixel Stretch Studio
 
-아이폰에서 Safari로 열고 **공유 → 홈 화면에 추가**를 선택하면 앱처럼 설치됩니다.
+개인용 모바일 픽셀 스트레치 편집기입니다. 모든 이미지 처리는 브라우저 안에서 이루어집니다.
 
-## 주요 기능
-- 직선형 픽셀 스트레치
-- 브러시형 픽셀 스트레치
-- 가로/세로 방향
-- 길이/두께/강도 조절
-- 실행 취소/원본 복원
-- PNG 저장 및 iOS 공유 시트
-- 서비스워커 기반 오프라인 실행
+## 기능
+- 라인 및 브러시 픽셀 스트레치
+- 0–359° 자유각도와 각도 프리셋
+- 길이, 두께, 불투명도, 브러시 간격 조절
+- 두 손가락 확대·축소 및 이동
+- Undo/Redo, 원본 복원
+- 최대 4096px 작업 해상도 PNG 저장
+- IndexedDB 자동 임시 저장
+- PWA 오프라인 실행
 
-## GitHub Pages
-저장소의 **Settings → Pages → Build and deployment → Source**를 `GitHub Actions`로 지정하면 자동 배포됩니다.
+## 설치
+GitHub Pages 주소를 iPhone Safari로 열고 `공유 → 홈 화면에 추가`를 선택합니다.
 
-배포 주소: `https://flatcoop24-oss.github.io/pixel-stretch-app/`
+배포 주소: https://flatcoop24-oss.github.io/pixel-stretch-app/

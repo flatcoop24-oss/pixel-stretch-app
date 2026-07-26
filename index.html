@@ -32,7 +32,7 @@
       <div id="emptyState" class="empty">
         <div class="empty-icon">✦</div>
         <h1>Pixel Stretch</h1>
-        <p>사진 속 요소를 자동 레이어로 잡고<br>그 뒤에 픽셀을 뿌리거나 늘려보세요.</p>
+        <p>사진 속 요소를 자동 레이어로 잡고<br>그 앞이나 뒤로 픽셀을 자연스럽게 늘려보세요.</p>
         <label class="load-btn">사진 선택<input id="firstInput" type="file" accept="image/*" hidden></label>
       </div>
 
@@ -43,12 +43,12 @@
           <canvas id="foregroundCanvas"></canvas>
           <canvas id="overlay"></canvas>
         </div>
-        <div id="hint" class="hint">효과 앞에 남길 요소를 한 번 탭하세요</div>
+        <div id="hint" class="hint">효과 기준이 될 요소를 한 번 탭하세요</div>
         <div id="aiStatus" class="ai-status hidden" role="status">
           <span class="spinner"></span>
           <div><strong id="aiStatusTitle">요소 분석 중</strong><small id="aiStatusText">처음 한 번은 AI 모델을 준비합니다</small></div>
         </div>
-        <div id="layerBadge" class="layer-badge hidden"><span></span><b id="layerBadgeText">요소 1개 보호 중</b></div>
+        <div id="layerBadge" class="layer-badge hidden"><span></span><b id="layerBadgeText">요소 1개 설정됨</b></div>
         <button id="fitBtn" class="fit-btn">맞춤</button>
       </div>
     </section>
@@ -64,7 +64,7 @@
 
       <div id="layerControls" class="layer-controls">
         <div class="layer-guide">
-          <div><b>자동 레이어</b><span>효과보다 앞에 남길 소파·사람·사물 등을 사진에서 탭하세요.</span></div>
+          <div><b>자동 레이어</b><span>픽셀 효과와 앞뒤 관계를 설정할 소파·사람·사물 등을 탭하세요.</span></div>
           <strong id="layerCount">0</strong>
         </div>
         <div id="layerList" class="layer-list"><span class="layer-empty">아직 선택된 요소가 없습니다</span></div>
@@ -72,6 +72,16 @@
           <button id="addLayerBtn" class="accent-action">＋ 요소 선택</button>
           <button id="previewMaskBtn" disabled>마스크 보기</button>
           <button id="removeLayerBtn" disabled>레이어 삭제</button>
+        </div>
+        <div class="layer-order">
+          <div class="layer-order-head">
+            <div><b>픽셀 작업물 위치</b><span>현재 선택한 요소를 기준으로 효과가 앞에 올지 뒤에 들어갈지 정합니다.</span></div>
+            <strong id="layerPlacementText">레이어 선택</strong>
+          </div>
+          <div class="layer-order-buttons">
+            <button id="effectBehindBtn" disabled>요소 뒤</button>
+            <button id="effectFrontBtn" disabled>요소 앞</button>
+          </div>
         </div>
         <label class="wide-slider">
           <span>경계 부드럽게 <output id="featherOut">4</output></span>
@@ -88,7 +98,7 @@
           <button class="mode" data-mode="curve">휘기</button>
         </div>
         <div class="sliders">
-          <label><span>크기 <output id="sizeOut">24</output></span><input id="size" type="range" min="2" max="120" value="24"></label>
+          <label><span>두께 <output id="sizeOut">24</output></span><input id="size" type="range" min="2" max="120" value="24"></label>
           <label><span>밀도 <output id="densityOut">65</output></span><input id="density" type="range" min="10" max="100" value="65"></label>
           <label><span>흐림 <output id="softnessOut">24</output></span><input id="softness" type="range" min="0" max="80" value="24"></label>
           <label><span>불투명도 <output id="opacityOut">90</output></span><input id="opacity" type="range" min="10" max="100" value="90"></label>

@@ -1,40 +1,367 @@
-const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const el={effect:$('#effectCanvas'),image:$('#imageCanvas'),overlay:$('#overlay'),stage:$('#stage'),viewport:$('#viewport'),empty:$('#emptyState'),controls:$('#controls'),first:$('#firstInput'),file:$('#fileInput'),fit:$('#fitBtn'),hint:$('#hint'),undo:$('#undoBtn'),redo:$('#redoBtn'),reset:$('#resetBtn'),save:$('#saveBtn'),reselect:$('#reselectBtn'),clear:$('#clearEffectBtn'),size:$('#size'),density:$('#density'),softness:$('#softness'),opacity:$('#opacity'),sizeOut:$('#sizeOut'),densityOut:$('#densityOut'),softnessOut:$('#softnessOut'),opacityOut:$('#opacityOut'),toast:$('#toast')};
-const fx=el.effect.getContext('2d',{willReadFrequently:true}),ix=el.image.getContext('2d',{willReadFrequently:true}),ox=el.overlay.getContext('2d');
-const isiOS=/iPhone|iPad|iPod/i.test(navigator.userAgent),MAX_IMAGE=isiOS?1400:2000,MAX_HISTORY=isiOS?4:8;
-const state={tool:'pick',mode:'soft',scale:1,tx:0,ty:0,pointers:new Map(),gesture:null,drawing:false,lastClient:null,lastPoint:null,originalBitmap:null,imageData:null,imageRect:null,line:[],strip:null,preview:null,undo:[],redo:[],fileName:'image'};
-function say(t){el.toast.textContent=t;el.toast.classList.add('show');clearTimeout(say.t);say.t=setTimeout(()=>el.toast.classList.remove('show'),1500)}
-function sync(){el.sizeOut.value=el.size.value;el.densityOut.value=el.density.value;el.softnessOut.value=el.softness.value;el.opacityOut.value=el.opacity.value} [el.size,el.density,el.softness,el.opacity].forEach(x=>x.addEventListener('input',sync));sync();
-function setTool(tool){state.tool=tool;$$('[data-tool]').forEach(b=>b.classList.toggle('active',b.dataset.tool===tool));el.hint.textContent=tool==='pick'?'사진 위를 짧게 그어 픽셀을 선택하세요':tool==='spray'?'사진 가장자리에서 바깥쪽으로 쓸어주세요':tool==='stretch'?'선택선에서 바깥쪽으로 길게 당겨주세요':'두 손가락 또는 한 손가락으로 화면을 이동하세요'}
-$$('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
-$$('[data-mode]').forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;$$('[data-mode]').forEach(x=>x.classList.toggle('active',x===b))});
-async function loadFile(file){if(!file||!file.type.startsWith('image/'))return;try{const bmp=await createImageBitmap(file),s=Math.min(1,MAX_IMAGE/Math.max(bmp.width,bmp.height)),w=Math.max(1,Math.round(bmp.width*s)),h=Math.max(1,Math.round(bmp.height*s)),pad=Math.round(Math.max(w,h)*.42),cw=w+pad*2,ch=h+pad*2;[el.effect,el.image,el.overlay].forEach(c=>{c.width=cw;c.height=ch});fx.clearRect(0,0,cw,ch);ix.clearRect(0,0,cw,ch);ix.drawImage(bmp,pad,pad,w,h);state.imageData=ix.getImageData(0,0,cw,ch);state.imageRect={x:pad,y:pad,w,h};state.line=[];state.strip=null;state.undo=[];state.redo=[];state.fileName=(file.name||'image').replace(/\.[^.]+$/,'');bmp.close();el.empty.classList.add('hidden');el.viewport.classList.remove('hidden');el.controls.classList.remove('hidden');setTool('pick');updateHistory();drawOverlay();requestAnimationFrame(fitView);say('사진을 불러왔습니다')}catch(e){console.error(e);say('사진을 불러오지 못했습니다')}}
-[el.first,el.file].forEach(i=>i.addEventListener('change',e=>loadFile(e.target.files[0])));
-function fitView(){const r=el.viewport.getBoundingClientRect(),p=14;state.scale=Math.max(.05,Math.min(6,Math.min((r.width-p*2)/el.effect.width,(r.height-p*2)/el.effect.height)));state.tx=(r.width-el.effect.width*state.scale)/2;state.ty=(r.height-el.effect.height*state.scale)/2;applyTransform()}
-function applyTransform(){el.stage.style.transform=`translate(${state.tx}px,${state.ty}px) scale(${state.scale})`}
-el.fit.onclick=fitView;window.addEventListener('resize',()=>state.imageRect&&fitView());
-function point(cx,cy){const r=el.viewport.getBoundingClientRect();return{x:(cx-r.left-state.tx)/state.scale,y:(cy-r.top-state.ty)/state.scale}}
-function inImage(p){const r=state.imageRect;return r&&p.x>=r.x&&p.y>=r.y&&p.x<r.x+r.w&&p.y<r.y+r.h}
-function snapshot(){state.undo.push(fx.getImageData(0,0,el.effect.width,el.effect.height));if(state.undo.length>MAX_HISTORY)state.undo.shift();state.redo=[];updateHistory()}
-function updateHistory(){el.undo.disabled=!state.undo.length;el.redo.disabled=!state.redo.length}
-function undo(){if(!state.undo.length)return;state.redo.push(fx.getImageData(0,0,el.effect.width,el.effect.height));fx.putImageData(state.undo.pop(),0,0);updateHistory()}
-function redo(){if(!state.redo.length)return;state.undo.push(fx.getImageData(0,0,el.effect.width,el.effect.height));fx.putImageData(state.redo.pop(),0,0);updateHistory()}
-el.undo.onclick=undo;el.redo.onclick=redo;
-el.clear.onclick=()=>{if(!state.imageRect)return;snapshot();fx.clearRect(0,0,el.effect.width,el.effect.height);say('효과를 지웠습니다')};
-el.reset.onclick=()=>{if(!state.imageRect)return;snapshot();fx.clearRect(0,0,el.effect.width,el.effect.height);state.line=[];state.strip=null;setTool('pick');drawOverlay();say('처음 상태로 돌아왔습니다')};
-el.reselect.onclick=()=>{state.line=[];state.strip=null;setTool('pick');drawOverlay()};
-function metrics(a,b){const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1;return{dx,dy,d,angle:Math.atan2(dy,dx)}}
-function makeStrip(){if(state.line.length<2)return null;const a=state.line[0],b=state.line[1],m=metrics(a,b),th=Math.max(1,Math.round(Number(el.size.value)*.18)),strip=document.createElement('canvas');strip.width=Math.max(2,Math.round(m.d));strip.height=th;const sc=strip.getContext('2d'),out=sc.createImageData(strip.width,th),src=state.imageData;for(let x=0;x<strip.width;x++){const t=x/Math.max(1,strip.width-1),px=a.x+m.dx*t,py=a.y+m.dy*t,nx=-Math.sin(m.angle),ny=Math.cos(m.angle);for(let y=0;y<th;y++){const off=y-(th-1)/2,sx=Math.max(0,Math.min(el.image.width-1,Math.round(px+nx*off))),sy=Math.max(0,Math.min(el.image.height-1,Math.round(py+ny*off))),si=(sy*el.image.width+sx)*4,di=(y*strip.width+x)*4;out.data[di]=src.data[si];out.data[di+1]=src.data[si+1];out.data[di+2]=src.data[si+2];out.data[di+3]=src.data[si+3]}}sc.putImageData(out,0,0);return strip}
-function drawOverlay(){ox.clearRect(0,0,el.overlay.width,el.overlay.height);if(state.line.length<2)return;const a=state.line[0],b=state.line[1];ox.save();ox.beginPath();ox.moveTo(a.x,a.y);ox.lineTo(b.x,b.y);ox.strokeStyle='#c9ff45';ox.lineWidth=Math.max(2,3/state.scale);ox.lineCap='round';ox.setLineDash([8/state.scale,6/state.scale]);ox.stroke();[a,b].forEach(p=>{ox.beginPath();ox.arc(p.x,p.y,Math.max(4,5/state.scale),0,Math.PI*2);ox.fillStyle='#fff';ox.fill()});ox.restore()}
-function stamp(p,angle,speed=1){if(!state.strip)return;const size=Number(el.size.value),density=Number(el.density.value)/100,soft=Number(el.softness.value),alpha=Number(el.opacity.value)/100,scatter=size*(state.mode==='soft'?.7:.25),count=Math.max(1,Math.round(1+density*5));fx.save();fx.globalAlpha=alpha/(state.mode==='soft'?1.8:1);fx.imageSmoothingEnabled=true;fx.filter=soft?`blur(${Math.max(0,soft/22)}px)`:'none';for(let i=0;i<count;i++){const rnd=(Math.random()-.5)*scatter,along=(Math.random()-.5)*size*.35,x=p.x+Math.cos(angle)*along-Math.sin(angle)*rnd,y=p.y+Math.sin(angle)*along+Math.cos(angle)*rnd,fan=state.mode==='fan'?1+Math.random()*.9:1,w=Math.max(2,size*fan),h=Math.max(1,size*(.13+.12*Math.random()));fx.save();fx.translate(x,y);fx.rotate(angle+Math.PI/2+(state.mode==='soft'?(Math.random()-.5)*.18:0));fx.drawImage(state.strip,-w/2,-h/2,w,h);fx.restore()}fx.restore()}
-function spraySegment(a,b){const m=metrics(a,b),spacing=Math.max(2,Number(el.size.value)*(1.05-Number(el.density.value)/120));for(let d=0;d<=m.d;d+=spacing){const t=d/m.d,p={x:a.x+m.dx*t,y:a.y+m.dy*t};stamp(p,m.angle)}}
-function renderStretch(end){if(!state.preview||!state.strip||state.line.length<2)return;fx.putImageData(state.preview,0,0);const c={x:(state.line[0].x+state.line[1].x)/2,y:(state.line[0].y+state.line[1].y)/2},m=metrics(c,end),steps=Math.max(2,Math.ceil(m.d/2)),curve=state.mode==='curve'?m.d*.22:0;for(let i=0;i<=steps;i++){const t=i/steps,bend=Math.sin(Math.PI*t)*curve,p={x:c.x+m.dx*t-Math.sin(m.angle)*bend,y:c.y+m.dy*t+Math.cos(m.angle)*bend};stamp(p,m.angle,1)}}
-function beginGesture(){const p=[...state.pointers.values()];if(p.length<2)return;const a=p[0],b=p[1];state.gesture={dist:Math.hypot(b.x-a.x,b.y-a.y),scale:state.scale,tx:state.tx,ty:state.ty,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2};state.drawing=false}
-function updateGesture(){const p=[...state.pointers.values()];if(p.length<2||!state.gesture)return;const a=p[0],b=p[1],cx=(a.x+b.x)/2,cy=(a.y+b.y)/2,d=Math.hypot(b.x-a.x,b.y-a.y),ns=Math.max(.05,Math.min(7,state.gesture.scale*d/state.gesture.dist)),r=el.viewport.getBoundingClientRect(),ixp=(state.gesture.cx-r.left-state.gesture.tx)/state.gesture.scale,iyp=(state.gesture.cy-r.top-state.gesture.ty)/state.gesture.scale;state.scale=ns;state.tx=cx-r.left-ixp*ns;state.ty=cy-r.top-iyp*ns;applyTransform();drawOverlay()}
-el.viewport.addEventListener('pointerdown',e=>{el.viewport.setPointerCapture(e.pointerId);state.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(state.pointers.size===2){beginGesture();return}if(state.pointers.size>1)return;const p=point(e.clientX,e.clientY);state.lastClient={x:e.clientX,y:e.clientY};state.lastPoint=p;if(state.tool==='hand'){state.drawing=true;return}if(state.tool==='pick'){if(!inImage(p))return say('사진 안에서 픽셀을 선택하세요');state.line=[p,p];state.drawing=true;drawOverlay();return}if(!state.strip)return say('먼저 픽셀 선택선을 그어주세요');snapshot();state.preview=fx.getImageData(0,0,el.effect.width,el.effect.height);state.drawing=true;if(state.tool==='spray')stamp(p,0)});
-el.viewport.addEventListener('pointermove',e=>{if(state.pointers.has(e.pointerId))state.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(state.pointers.size>=2){updateGesture();return}if(!state.drawing)return;if(state.tool==='hand'){state.tx+=e.clientX-state.lastClient.x;state.ty+=e.clientY-state.lastClient.y;state.lastClient={x:e.clientX,y:e.clientY};applyTransform();return}const p=point(e.clientX,e.clientY);if(state.tool==='pick'){state.line[1]=p;drawOverlay()}else if(state.tool==='spray'){spraySegment(state.lastPoint,p);state.lastPoint=p}else if(state.tool==='stretch')renderStretch(p)});
-function end(e){state.pointers.delete(e.pointerId);if(state.pointers.size<2)state.gesture=null;if(state.drawing&&state.tool==='pick'){const m=metrics(state.line[0],state.line[1]);if(m.d<5){state.line=[];say('선택선을 조금 더 길게 그어주세요')}else{state.strip=makeStrip();setTool('spray');say('이제 바깥쪽으로 쓸어주세요')}drawOverlay()}else if(state.drawing&&(state.tool==='spray'||state.tool==='stretch'))say('원본 뒤쪽에 효과를 적용했습니다');state.drawing=false;state.preview=null;state.lastPoint=null;updateHistory()}
-el.viewport.addEventListener('pointerup',end);el.viewport.addEventListener('pointercancel',end);
-el.viewport.addEventListener('wheel',e=>{e.preventDefault();const r=el.viewport.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,ixp=(mx-state.tx)/state.scale,iyp=(my-state.ty)/state.scale;state.scale=Math.max(.05,Math.min(7,state.scale*Math.exp(-e.deltaY*.001)));state.tx=mx-ixp*state.scale;state.ty=my-iyp*state.scale;applyTransform();drawOverlay()},{passive:false});
-async function save(){if(!state.imageRect)return;const out=document.createElement('canvas');out.width=el.effect.width;out.height=el.effect.height;const c=out.getContext('2d');c.drawImage(el.effect,0,0);c.drawImage(el.image,0,0);const blob=await new Promise(r=>out.toBlob(r,'image/png',1));if(!blob)return;const file=new File([blob],`${state.fileName}-pixel-spray-${Date.now()}.png`,{type:'image/png'});try{if(navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:'Pixel Stretch'});return}}catch(e){if(e.name==='AbortError')return}const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
-el.save.onclick=save;if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
+
+const MEDIAPIPE_VERSION = '0.10.35';
+const MEDIAPIPE_MODULE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
+const MEDIAPIPE_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
+const SEGMENT_MODEL = 'https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite';
+
+const el = {
+  image: $('#imageCanvas'),
+  effect: $('#effectCanvas'),
+  foreground: $('#foregroundCanvas'),
+  overlay: $('#overlay'),
+  stage: $('#stage'),
+  viewport: $('#viewport'),
+  empty: $('#emptyState'),
+  controls: $('#controls'),
+  layerControls: $('#layerControls'),
+  effectControls: $('#effectControls'),
+  first: $('#firstInput'),
+  file: $('#fileInput'),
+  fit: $('#fitBtn'),
+  hint: $('#hint'),
+  aiStatus: $('#aiStatus'),
+  aiStatusTitle: $('#aiStatusTitle'),
+  aiStatusText: $('#aiStatusText'),
+  layerBadge: $('#layerBadge'),
+  layerBadgeText: $('#layerBadgeText'),
+  layerCount: $('#layerCount'),
+  layerList: $('#layerList'),
+  addLayer: $('#addLayerBtn'),
+  previewMask: $('#previewMaskBtn'),
+  removeLayer: $('#removeLayerBtn'),
+  effectTargetText: $('#effectTargetText'),
+  undo: $('#undoBtn'),
+  redo: $('#redoBtn'),
+  reset: $('#resetBtn'),
+  save: $('#saveBtn'),
+  reselect: $('#reselectBtn'),
+  clear: $('#clearEffectBtn'),
+  size: $('#size'),
+  density: $('#density'),
+  softness: $('#softness'),
+  opacity: $('#opacity'),
+  feather: $('#feather'),
+  sizeOut: $('#sizeOut'),
+  densityOut: $('#densityOut'),
+  softnessOut: $('#softnessOut'),
+  opacityOut: $('#opacityOut'),
+  featherOut: $('#featherOut'),
+  toast: $('#toast'),
+};
+
+const ix = el.image.getContext('2d', { willReadFrequently: true });
+const fx = el.effect.getContext('2d', { willReadFrequently: true });
+const fg = el.foreground.getContext('2d');
+const ox = el.overlay.getContext('2d');
+
+const isiOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const MAX_IMAGE = isiOS ? 1320 : 1900;
+const MAX_HISTORY = isiOS ? 3 : 7;
+const MAX_LAYERS = isiOS ? 4 : 7;
+
+const state = {
+  tool: 'layer',
+  mode: 'soft',
+  scale: 1,
+  tx: 0,
+  ty: 0,
+  pointers: new Map(),
+  gesture: null,
+  drawing: false,
+  lastClient: null,
+  lastPoint: null,
+  dragStart: null,
+  layerTapMoved: false,
+  sourceCanvas: document.createElement('canvas'),
+  sourceImageData: null,
+  imageData: null,
+  imageRect: null,
+  line: [],
+  strip: null,
+  preview: null,
+  undo: [],
+  redo: [],
+  fileName: 'image',
+  layers: [],
+  activeLayerId: null,
+  showMask: false,
+  layerSequence: 0,
+  segmentationBusy: false,
+  segmenter: null,
+  segmenterPromise: null,
+  modelCanvas: document.createElement('canvas'),
+  workCanvas: document.createElement('canvas'),
+  imageToken: 0,
+  foregroundRaf: 0,
+};
+
+function say(text) {
+  el.toast.textContent = text;
+  el.toast.classList.add('show');
+  clearTimeout(say.timer);
+  say.timer = setTimeout(() => el.toast.classList.remove('show'), 1750);
+}
+
+function syncOutputs() {
+  el.sizeOut.value = el.size.value;
+  el.densityOut.value = el.density.value;
+  el.softnessOut.value = el.softness.value;
+  el.opacityOut.value = el.opacity.value;
+  el.featherOut.value = el.feather.value;
+}
+
+[el.size, el.density, el.softness, el.opacity].forEach((input) => {
+  input.addEventListener('input', () => {
+    syncOutputs();
+    if (input === el.size && state.line.length === 2) state.strip = makeStrip();
+  });
+});
+el.feather.addEventListener('input', () => {
+  syncOutputs();
+  scheduleForegroundRender();
+});
+syncOutputs();
+
+function activeLayer() {
+  return state.layers.find((layer) => layer.id === state.activeLayerId) || null;
+}
+
+function updateHint() {
+  const hasLayers = state.layers.length > 0;
+  const hints = {
+    layer: state.segmentationBusy
+      ? '사진 속 요소를 분석하고 있습니다'
+      : hasLayers
+        ? '추가로 보호할 요소를 탭하거나 아래 레이어를 선택하세요'
+        : '효과 앞에 남길 요소를 한 번 탭하세요',
+    pick: hasLayers
+      ? '선택 요소에서 가져올 픽셀을 짧게 그어주세요'
+      : '사진 위를 짧게 그어 픽셀을 선택하세요',
+    spray: hasLayers
+      ? '선택 요소 뒤로 스프레이하듯 쓸어주세요'
+      : '손가락을 움직여 픽셀을 스프레이하세요',
+    stretch: hasLayers
+      ? '선택 요소 뒤쪽으로 길게 당겨주세요'
+      : '선택선에서 원하는 방향으로 길게 당겨주세요',
+    hand: '한 손가락으로 이동하고 두 손가락으로 확대하세요',
+  };
+  el.hint.textContent = hints[state.tool] || '';
+}
+
+function setTool(tool) {
+  state.tool = tool;
+  $$('[data-tool]').forEach((button) => button.classList.toggle('active', button.dataset.tool === tool));
+  const layerMode = tool === 'layer';
+  el.layerControls.classList.toggle('hidden', !layerMode);
+  el.effectControls.classList.toggle('hidden', layerMode);
+  updateHint();
+  drawOverlay();
+}
+
+$$('[data-tool]').forEach((button) => {
+  button.addEventListener('click', () => setTool(button.dataset.tool));
+});
+
+$$('[data-mode]').forEach((button) => {
+  button.addEventListener('click', () => {
+    state.mode = button.dataset.mode;
+    $$('[data-mode]').forEach((item) => item.classList.toggle('active', item === button));
+  });
+});
+
+function setAIStatus(show, title = '요소 분석 중', text = '처음 한 번은 AI 모델을 준비합니다') {
+  el.aiStatusTitle.textContent = title;
+  el.aiStatusText.textContent = text;
+  el.aiStatus.classList.toggle('hidden', !show);
+}
+
+async function loadFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const token = ++state.imageToken;
+  try {
+    const bmp = await createImageBitmap(file);
+    if (token !== state.imageToken) {
+      bmp.close();
+      return;
+    }
+    const scale = Math.min(1, MAX_IMAGE / Math.max(bmp.width, bmp.height));
+    const width = Math.max(1, Math.round(bmp.width * scale));
+    const height = Math.max(1, Math.round(bmp.height * scale));
+    const pad = Math.round(Math.max(width, height) * 0.38);
+    const canvasWidth = width + pad * 2;
+    const canvasHeight = height + pad * 2;
+
+    [el.image, el.effect, el.foreground, el.overlay].forEach((canvas) => {
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+    });
+    state.sourceCanvas.width = width;
+    state.sourceCanvas.height = height;
+    const sourceContext = state.sourceCanvas.getContext('2d', { willReadFrequently: true });
+    sourceContext.clearRect(0, 0, width, height);
+    sourceContext.drawImage(bmp, 0, 0, width, height);
+    bmp.close();
+
+    ix.clearRect(0, 0, canvasWidth, canvasHeight);
+    ix.drawImage(state.sourceCanvas, pad, pad);
+    fx.clearRect(0, 0, canvasWidth, canvasHeight);
+    fg.clearRect(0, 0, canvasWidth, canvasHeight);
+    ox.clearRect(0, 0, canvasWidth, canvasHeight);
+
+    state.sourceImageData = sourceContext.getImageData(0, 0, width, height);
+    state.imageData = ix.getImageData(0, 0, canvasWidth, canvasHeight);
+    state.imageRect = { x: pad, y: pad, w: width, h: height };
+    state.line = [];
+    state.strip = null;
+    state.preview = null;
+    state.undo = [];
+    state.redo = [];
+    state.layers = [];
+    state.activeLayerId = null;
+    state.showMask = false;
+    state.layerSequence = 0;
+    state.fileName = (file.name || 'image').replace(/\.[^.]+$/, '');
+
+    el.empty.classList.add('hidden');
+    el.viewport.classList.remove('hidden');
+    el.controls.classList.remove('hidden');
+    setTool('layer');
+    updateHistory();
+    updateLayerUI();
+    drawOverlay();
+    requestAnimationFrame(fitView);
+    say('사진을 불러왔습니다 · 요소를 탭하세요');
+
+    const warm = () => ensureSegmenter().catch(() => null);
+    if ('requestIdleCallback' in window) requestIdleCallback(warm, { timeout: 2800 });
+    else setTimeout(warm, 1000);
+  } catch (error) {
+    console.error(error);
+    say('사진을 불러오지 못했습니다');
+  }
+}
+
+[el.first, el.file].forEach((input) => {
+  input.addEventListener('change', (event) => {
+    loadFile(event.target.files?.[0]);
+    event.target.value = '';
+  });
+});
+
+function fitView() {
+  if (!state.imageRect) return;
+  const rect = el.viewport.getBoundingClientRect();
+  const padding = 14;
+  state.scale = Math.max(
+    0.05,
+    Math.min(7, Math.min((rect.width - padding * 2) / el.effect.width, (rect.height - padding * 2) / el.effect.height)),
+  );
+  state.tx = (rect.width - el.effect.width * state.scale) / 2;
+  state.ty = (rect.height - el.effect.height * state.scale) / 2;
+  applyTransform();
+}
+
+function applyTransform() {
+  el.stage.style.transform = `translate(${state.tx}px,${state.ty}px) scale(${state.scale})`;
+}
+
+el.fit.addEventListener('click', fitView);
+window.addEventListener('resize', () => state.imageRect && fitView());
+
+function point(clientX, clientY) {
+  const rect = el.viewport.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left - state.tx) / state.scale,
+    y: (clientY - rect.top - state.ty) / state.scale,
+  };
+}
+
+function inImage(p) {
+  const rect = state.imageRect;
+  return Boolean(rect && p.x >= rect.x && p.y >= rect.y && p.x < rect.x + rect.w && p.y < rect.y + rect.h);
+}
+
+function clampToImage(p) {
+  const rect = state.imageRect;
+  if (!rect) return p;
+  return {
+    x: Math.max(rect.x, Math.min(rect.x + rect.w - 1, p.x)),
+    y: Math.max(rect.y, Math.min(rect.y + rect.h - 1, p.y)),
+  };
+}
+
+function snapshot() {
+  state.undo.push(fx.getImageData(0, 0, el.effect.width, el.effect.height));
+  if (state.undo.length > MAX_HISTORY) state.undo.shift();
+  state.redo = [];
+  updateHistory();
+}
+
+function updateHistory() {
+  el.undo.disabled = !state.undo.length;
+  el.redo.disabled = !state.redo.length;
+}
+
+function undo() {
+  if (!state.undo.length) return;
+  state.redo.push(fx.getImageData(0, 0, el.effect.width, el.effect.height));
+  fx.putImageData(state.undo.pop(), 0, 0);
+  updateHistory();
+}
+
+function redo() {
+  if (!state.redo.length) return;
+  state.undo.push(fx.getImageData(0, 0, el.effect.width, el.effect.height));
+  fx.putImageData(state.redo.pop(), 0, 0);
+  updateHistory();
+}
+
+el.undo.addEventListener('click', undo);
+el.redo.addEventListener('click', redo);
+
+el.clear.addEventListener('click', () => {
+  if (!state.imageRect) return;
+  snapshot();
+  fx.clearRect(0, 0, el.effect.width, el.effect.height);
+  say('효과를 지웠습니다');
+});
+
+el.reset.addEventListener('click', () => {
+  if (!state.imageRect) return;
+  fx.clearRect(0, 0, el.effect.width, el.effect.height);
+  fg.clearRect(0, 0, el.foreground.width, el.foreground.height);
+  state.undo = [];
+  state.redo = [];
+  state.line = [];
+  state.strip = null;
+  state.layers = [];
+  state.activeLayerId = null;
+  state.showMask = false;
+  updateHistory();
+  updateLayerUI();
+  setTool('layer');
+  say('레이어와 효과를 모두 초기화했습니다');
+});
+
+el.reselect.addEventListener('click', () => {
+  state.line = [];
+  state.strip = null;
+  setTool('pick');
+  drawOverlay();
+});
+
+el.addLayer.addEventListener('click', () => {
+  state.showMask = false;
+  setTool('layer');
+  say('사진에서 보호할 요소를 탭하세요');
+});
+
+el.previewMask.addEventListener('click', () => {
+  if (!activeLayer()) return;
+  state.showMask = !state.showMask;
+  updateLayerUI();
+  drawOverlay();
+});
+

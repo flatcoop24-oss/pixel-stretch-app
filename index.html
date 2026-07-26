@@ -1,1 +1,110 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#050505"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Pixel Stretch"><link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./icon.svg"><link rel="stylesheet" href="./style.css"><title>Pixel Stretch</title></head><body><main class="app"><header class="editor-top"><button id="resetBtn" class="icon-btn">×</button><div class="history"><button id="undoBtn" class="icon-btn" disabled>↶</button><button id="redoBtn" class="icon-btn" disabled>↷</button></div><div class="top-right"><label class="icon-btn">＋<input id="fileInput" type="file" accept="image/*" hidden></label><button id="saveBtn" class="done-btn">저장</button></div></header><section class="workspace"><div id="emptyState" class="empty"><div class="empty-icon">✦</div><h1>Pixel Stretch</h1><p>사진의 픽셀을 고르고 바깥으로 쓸어<br>이미지 뒤에 질감처럼 뿌려보세요.</p><label class="load-btn">사진 선택<input id="firstInput" type="file" accept="image/*" hidden></label></div><div id="viewport" class="viewport hidden"><div id="stage" class="stage"><canvas id="effectCanvas"></canvas><canvas id="imageCanvas"></canvas><canvas id="overlay"></canvas></div><div id="hint" class="hint">사진 위를 짧게 그어 픽셀을 선택하세요</div><button id="fitBtn" class="fit-btn">맞춤</button></div></section><section id="controls" class="controls hidden"><div class="tool-row"><button class="tool active" data-tool="pick"><span>╱</span><small>선택</small></button><button class="tool" data-tool="spray"><span>⌁</span><small>스프레이</small></button><button class="tool" data-tool="stretch"><span>↗</span><small>스트레치</small></button><button class="tool" data-tool="hand"><span>✋</span><small>이동</small></button></div><div class="mode-row"><button class="mode active" data-mode="soft">소프트</button><button class="mode" data-mode="solid">솔리드</button><button class="mode" data-mode="fan">확장</button><button class="mode" data-mode="curve">휘기</button></div><div class="sliders"><label><span>크기 <output id="sizeOut">24</output></span><input id="size" type="range" min="2" max="120" value="24"></label><label><span>밀도 <output id="densityOut">65</output></span><input id="density" type="range" min="10" max="100" value="65"></label><label><span>흐림 <output id="softnessOut">35</output></span><input id="softness" type="range" min="0" max="80" value="35"></label><label><span>불투명도 <output id="opacityOut">90</output></span><input id="opacity" type="range" min="10" max="100" value="90"></label></div><div class="selection-actions"><button id="reselectBtn">픽셀 다시 선택</button><button id="clearEffectBtn">효과 지우기</button></div></section></main><div id="toast" class="toast"></div><script src="./app.js"></script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#050505">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pixel Stretch">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://storage.googleapis.com" crossorigin>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <link rel="stylesheet" href="./style.css">
+  <title>Pixel Stretch</title>
+</head>
+<body>
+  <main class="app">
+    <header class="editor-top">
+      <button id="resetBtn" class="icon-btn" aria-label="처음 상태로">×</button>
+      <div class="history">
+        <button id="undoBtn" class="icon-btn" aria-label="실행 취소" disabled>↶</button>
+        <button id="redoBtn" class="icon-btn" aria-label="다시 실행" disabled>↷</button>
+      </div>
+      <div class="top-right">
+        <label class="icon-btn" aria-label="다른 사진 열기">＋<input id="fileInput" type="file" accept="image/*" hidden></label>
+        <button id="saveBtn" class="done-btn">저장</button>
+      </div>
+    </header>
+
+    <section class="workspace">
+      <div id="emptyState" class="empty">
+        <div class="empty-icon">✦</div>
+        <h1>Pixel Stretch</h1>
+        <p>사진 속 요소를 자동 레이어로 잡고<br>그 뒤에 픽셀을 뿌리거나 늘려보세요.</p>
+        <label class="load-btn">사진 선택<input id="firstInput" type="file" accept="image/*" hidden></label>
+      </div>
+
+      <div id="viewport" class="viewport hidden">
+        <div id="stage" class="stage">
+          <canvas id="imageCanvas"></canvas>
+          <canvas id="effectCanvas"></canvas>
+          <canvas id="foregroundCanvas"></canvas>
+          <canvas id="overlay"></canvas>
+        </div>
+        <div id="hint" class="hint">효과 앞에 남길 요소를 한 번 탭하세요</div>
+        <div id="aiStatus" class="ai-status hidden" role="status">
+          <span class="spinner"></span>
+          <div><strong id="aiStatusTitle">요소 분석 중</strong><small id="aiStatusText">처음 한 번은 AI 모델을 준비합니다</small></div>
+        </div>
+        <div id="layerBadge" class="layer-badge hidden"><span></span><b id="layerBadgeText">요소 1개 보호 중</b></div>
+        <button id="fitBtn" class="fit-btn">맞춤</button>
+      </div>
+    </section>
+
+    <section id="controls" class="controls hidden">
+      <div class="tool-row">
+        <button class="tool active" data-tool="layer"><span>◎</span><small>자동 레이어</small></button>
+        <button class="tool" data-tool="pick"><span>╱</span><small>픽셀</small></button>
+        <button class="tool" data-tool="spray"><span>⌁</span><small>스프레이</small></button>
+        <button class="tool" data-tool="stretch"><span>↗</span><small>스트레치</small></button>
+        <button class="tool" data-tool="hand"><span>✋</span><small>이동</small></button>
+      </div>
+
+      <div id="layerControls" class="layer-controls">
+        <div class="layer-guide">
+          <div><b>자동 레이어</b><span>효과보다 앞에 남길 소파·사람·사물 등을 사진에서 탭하세요.</span></div>
+          <strong id="layerCount">0</strong>
+        </div>
+        <div id="layerList" class="layer-list"><span class="layer-empty">아직 선택된 요소가 없습니다</span></div>
+        <div class="layer-actions">
+          <button id="addLayerBtn" class="accent-action">＋ 요소 선택</button>
+          <button id="previewMaskBtn" disabled>마스크 보기</button>
+          <button id="removeLayerBtn" disabled>레이어 삭제</button>
+        </div>
+        <label class="wide-slider">
+          <span>경계 부드럽게 <output id="featherOut">4</output></span>
+          <input id="feather" type="range" min="0" max="24" value="4">
+        </label>
+      </div>
+
+      <div id="effectControls" class="effect-controls hidden">
+        <div class="effect-target"><span>합성 위치</span><b id="effectTargetText">자동 레이어를 먼저 선택하세요</b></div>
+        <div class="mode-row">
+          <button class="mode active" data-mode="soft">소프트</button>
+          <button class="mode" data-mode="solid">솔리드</button>
+          <button class="mode" data-mode="fan">확장</button>
+          <button class="mode" data-mode="curve">휘기</button>
+        </div>
+        <div class="sliders">
+          <label><span>크기 <output id="sizeOut">24</output></span><input id="size" type="range" min="2" max="120" value="24"></label>
+          <label><span>밀도 <output id="densityOut">65</output></span><input id="density" type="range" min="10" max="100" value="65"></label>
+          <label><span>흐림 <output id="softnessOut">24</output></span><input id="softness" type="range" min="0" max="80" value="24"></label>
+          <label><span>불투명도 <output id="opacityOut">90</output></span><input id="opacity" type="range" min="10" max="100" value="90"></label>
+        </div>
+        <div class="selection-actions">
+          <button id="reselectBtn">픽셀 다시 선택</button>
+          <button id="clearEffectBtn">효과 지우기</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="./app.js"></script>
+  <script src="./app-effects.js"></script>
+  <script src="./app-segmentation.js"></script>
+  <script src="./app-interactions.js"></script>
+</body>
+</html>

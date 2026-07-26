@@ -364,3 +364,4 @@ el.previewMask.addEventListener('click', () => {
   updateLayerUI();
   drawOverlay();
 });
+

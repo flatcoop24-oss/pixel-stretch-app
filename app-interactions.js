@@ -1,3 +1,6 @@
+state.mode='straight';
+el.addLayer.addEventListener('click',()=>{state.refineMode='new';state.showMask=false;updateLayerUI();});
+
 el.viewport.addEventListener('pointerdown',(event)=>{
   el.viewport.setPointerCapture(event.pointerId);state.pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});
   if(state.pointers.size===2){beginGesture();return;}if(state.pointers.size>1)return;

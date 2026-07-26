@@ -1,3 +1,7 @@
+const effectBehindBtn = document.querySelector('#effectBehindBtn');
+const effectFrontBtn = document.querySelector('#effectFrontBtn');
+const layerPlacementText = document.querySelector('#layerPlacementText');
+
 el.removeLayer.addEventListener('click', () => {
   if (!state.activeLayerId) return;
   const index = state.layers.findIndex((layer) => layer.id === state.activeLayerId);
@@ -20,26 +24,56 @@ el.layerList.addEventListener('click', (event) => {
   drawOverlay();
 });
 
+function setActiveLayerPlacement(placement) {
+  const layer = activeLayer();
+  if (!layer) return;
+  layer.effectPlacement = placement;
+  scheduleForegroundRender();
+  updateLayerUI();
+  drawOverlay();
+  say(placement === 'behind' ? `${layer.name} 뒤에 효과를 배치합니다` : `${layer.name} 앞에 효과를 배치합니다`);
+}
+
+effectBehindBtn.addEventListener('click', () => setActiveLayerPlacement('behind'));
+effectFrontBtn.addEventListener('click', () => setActiveLayerPlacement('front'));
+
 function updateLayerUI() {
+  state.layers.forEach((layer) => {
+    if (!layer.effectPlacement) layer.effectPlacement = 'behind';
+  });
   const active = activeLayer();
   el.layerCount.textContent = String(state.layers.length);
   el.layerList.innerHTML = state.layers.length
-    ? state.layers
-        .map(
-          (layer) =>
-            `<button class="layer-chip${layer.id === state.activeLayerId ? ' active' : ''}" data-layer-id="${layer.id}">${layer.name}</button>`,
-        )
-        .join('')
+    ? state.layers.map((layer) => {
+        const label = layer.effectPlacement === 'behind' ? '뒤' : '앞';
+        return `<button class="layer-chip${layer.id === state.activeLayerId ? ' active' : ''}" data-layer-id="${layer.id}">${layer.name}<small>${label}</small></button>`;
+      }).join('')
     : '<span class="layer-empty">아직 선택된 요소가 없습니다</span>';
   el.previewMask.disabled = !active;
   el.removeLayer.disabled = !active;
   el.previewMask.classList.toggle('active', Boolean(active && state.showMask));
   el.previewMask.textContent = state.showMask ? '마스크 숨기기' : '마스크 보기';
   el.layerBadge.classList.toggle('hidden', !state.layers.length);
-  el.layerBadgeText.textContent = state.layers.length ? `요소 ${state.layers.length}개 보호 중` : '';
-  el.effectTargetText.textContent = state.layers.length
-    ? `${state.layers.map((layer) => layer.name).join(' · ')} 뒤에 합성`
-    : '자동 레이어를 먼저 선택하세요';
+  el.layerBadgeText.textContent = state.layers.length ? `요소 ${state.layers.length}개 설정됨` : '';
+
+  effectBehindBtn.disabled = !active;
+  effectFrontBtn.disabled = !active;
+  if (active) {
+    layerPlacementText.textContent = active.effectPlacement === 'behind' ? '요소 뒤' : '요소 앞';
+    effectBehindBtn.classList.toggle('active', active.effectPlacement === 'behind');
+    effectFrontBtn.classList.toggle('active', active.effectPlacement === 'front');
+  } else {
+    layerPlacementText.textContent = '레이어 선택';
+    effectBehindBtn.classList.remove('active');
+    effectFrontBtn.classList.remove('active');
+  }
+
+  const behind = state.layers.filter((layer) => layer.effectPlacement === 'behind').map((layer) => layer.name);
+  const front = state.layers.filter((layer) => layer.effectPlacement === 'front').map((layer) => layer.name);
+  const summary = [];
+  if (behind.length) summary.push(`${behind.join(' · ')} 뒤`);
+  if (front.length) summary.push(`${front.join(' · ')} 앞`);
+  el.effectTargetText.textContent = summary.length ? summary.join(' / ') : '자동 레이어를 먼저 선택하세요';
   updateHint();
 }
 
@@ -107,7 +141,6 @@ function drawOverlay() {
     ox.drawImage(layer.previewCanvas, state.imageRect.x, state.imageRect.y, state.imageRect.w, state.imageRect.h);
     ox.restore();
   }
-
   if (state.tool === 'layer' && state.drawing && state.lastPoint) {
     ox.save();
     ox.beginPath();
@@ -121,7 +154,6 @@ function drawOverlay() {
     ox.stroke();
     ox.restore();
   }
-
   if (state.line.length === 2) {
     const [a, b] = state.line;
     ox.save();
@@ -151,15 +183,15 @@ function scheduleForegroundRender() {
 function renderForeground() {
   if (!state.imageRect) return;
   fg.clearRect(0, 0, el.foreground.width, el.foreground.height);
-  if (!state.layers.length) return;
+  const protectedLayers = state.layers.filter((layer) => (layer.effectPlacement || 'behind') === 'behind');
+  if (!protectedLayers.length) return;
   const width = state.sourceCanvas.width;
   const height = state.sourceCanvas.height;
   state.workCanvas.width = width;
   state.workCanvas.height = height;
   const context = state.workCanvas.getContext('2d');
   const feather = Number(el.feather.value);
-
-  for (const layer of state.layers) {
+  for (const layer of protectedLayers) {
     context.clearRect(0, 0, width, height);
     context.globalCompositeOperation = 'source-over';
     context.filter = 'none';
@@ -182,12 +214,10 @@ function stamp(p, angle) {
   const modeScatter = state.mode === 'soft' ? 0.9 : state.mode === 'fan' ? 1.25 : 0.48;
   const scatter = brushSize * modeScatter;
   const count = Math.max(1, Math.round(2 + density * (state.mode === 'soft' ? 10 : 7)));
-
   fx.save();
   fx.globalAlpha = opacity / (state.mode === 'soft' ? 2.25 : 1.35);
   fx.imageSmoothingEnabled = state.mode !== 'solid';
   fx.filter = softness > 0 ? `blur(${Math.max(0, softness / 25)}px)` : 'none';
-
   for (let i = 0; i < count; i += 1) {
     const across = (Math.random() - 0.5) * scatter;
     const along = (Math.random() - 0.5) * brushSize * 0.7;
@@ -201,7 +231,6 @@ function stamp(p, angle) {
     const width = Math.max(2, brushSize * (0.18 + Math.random() * 0.62) * fan);
     const height = Math.max(1, brushSize * (state.mode === 'solid' ? 0.12 + Math.random() * 0.2 : 0.08 + Math.random() * 0.24));
     const wobble = state.mode === 'curve' ? (Math.random() - 0.5) * 0.9 : (Math.random() - 0.5) * 0.25;
-
     fx.save();
     fx.translate(x, y);
     fx.rotate(angle + Math.PI / 2 + wobble);
@@ -223,23 +252,43 @@ function spraySegment(a, b) {
 function renderStretch(endPoint) {
   if (!state.preview || !state.strip || state.line.length < 2) return;
   fx.putImageData(state.preview, 0, 0);
+  const base = metrics(state.line[0], state.line[1]);
   const center = {
     x: (state.line[0].x + state.line[1].x) / 2,
     y: (state.line[0].y + state.line[1].y) / 2,
   };
-  const m = metrics(center, endPoint);
-  const steps = Math.max(2, Math.ceil(m.d / Math.max(1.5, Number(el.size.value) * 0.12)));
-  const curve = state.mode === 'curve' ? m.d * 0.24 : 0;
+  const drag = metrics(center, endPoint);
+  if (drag.d < 2) return;
+
+  const opacity = Number(el.opacity.value) / 100;
+  const softness = Number(el.softness.value);
+  const thicknessScale = Math.max(0.65, Number(el.size.value) / 24);
+  const step = Math.max(1.25, state.strip.height * 0.7);
+  const steps = Math.max(2, Math.ceil(drag.d / step));
+  const curveAmount = state.mode === 'curve' ? drag.d * 0.2 : 0;
+
+  fx.save();
+  fx.globalAlpha = opacity;
+  fx.imageSmoothingEnabled = state.mode !== 'solid';
+  fx.filter = softness > 0 ? `blur(${Math.max(0, softness / 36)}px)` : 'none';
+
   for (let i = 0; i <= steps; i += 1) {
     const t = i / steps;
-    const bend = Math.sin(Math.PI * t) * curve;
-    stamp(
-      {
-        x: center.x + m.dx * t - Math.sin(m.angle) * bend,
-        y: center.y + m.dy * t + Math.cos(m.angle) * bend,
-      },
-      m.angle,
-    );
+    const ease = t * t * (3 - 2 * t);
+    const bend = Math.sin(Math.PI * t) * curveAmount;
+    const x = center.x + drag.dx * ease - Math.sin(drag.angle) * bend;
+    const y = center.y + drag.dy * ease + Math.cos(drag.angle) * bend;
+    let widthScale = 1;
+    if (state.mode === 'fan') widthScale = 1 + ease * 0.8;
+    else if (state.mode === 'soft') widthScale = 1 + ease * 0.08;
+    else if (state.mode === 'curve') widthScale = 1 + ease * 0.18;
+    const drawWidth = state.strip.width * widthScale;
+    const drawHeight = Math.max(1, step * 1.35 * thicknessScale);
+    fx.save();
+    fx.translate(x, y);
+    fx.rotate(base.angle);
+    fx.drawImage(state.strip, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+    fx.restore();
   }
+  fx.restore();
 }
-
